@@ -1,78 +1,44 @@
-const { Client, GatewayIntentBits } = require('discord.js');
-const { DisTube } = require('distube');
-const { YtDlpPlugin } = require('@distube/yt-dlp');
+import discord
+from discord.ext import commands
+import wavelink
 
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildVoiceStates
-  ]
-});
+TOKEN = "MTQwNjc0MTI4MTAzOTcxNjQxNA.GKA22K.-jaXgYbSlSjpwKJQrs9Fis2ey1jjdNjDfPF8Y0"  # توكن البوت الخاص بك
 
-const TOKEN = 'MTQwNjc0MTI4MTAzOTcxNjQxNA.GKA22K.-jaXgYbSlSjpwKJQrs9Fis2ey1jjdNjDfPF8Y0'; // توكن البوت الخاص بك
+intents = discord.Intents.default()
+intents.message_content = True
+intents.voice_states = True
 
-const distube = new DisTube(client, {
-  plugins: [new YtDlpPlugin()],
-  leaveOnFinish: false,
-  emitNewSongOnly: true
-});
+bot = commands.Bot(command_prefix="!", intents=intents)
 
-client.on('ready', () => {
-  console.log(`Logged in as ${client.user.tag}!`);
-});
+@bot.event
+async def on_ready():
+    print(f"✅ Logged in as {bot.user}")
+    # الاتصال بسيرفر Lavalink
+    await wavelink.NodePool.create_node(
+        bot=bot,
+        host='127.0.0.1',  # إذا كنت تشغل Lavalink محلياً
+        port=2333,
+        password='youshallnotpass'
+    )
 
-client.on('messageCreate', async (message) => {
-  if (message.author.bot) return;
+@bot.command(name="play", help="شغل أغنية من يوتيوب")
+async def play(ctx, *, search: str):
+    if not ctx.author.voice:
+        return await ctx.send("يجب أن تكون في قناة صوتية أولاً!")
 
-  // اختصار التشغيل
-  if (message.content === 'ش + p') {
-    message.reply('اكتب اسم الأغنية فقط وسيتم تشغيلها!');
-    return;
-  }
+    vc = ctx.voice_client
 
-  // اختصار الإيقاف
-  if (message.content === 'س + s') {
-    if (message.member.voice.channel) {
-      distube.stop(message.member.voice.channel);
-      message.reply('تم إيقاف الموسيقى!');
-    } else {
-      message.reply('يجب أن تكون في قناة صوتية!');
-    }
-    return;
-  }
+    if not vc:
+        vc = await ctx.author.voice.channel.connect(cls=wavelink.Player)
 
-  // تشغيل أغنية عند كتابة اسمها فقط
-  if (message.member.voice.channel) {
-    // جرب تشغيل الأغنية
-    try {
-      await distube.play(message.member.voice.channel, message.content, {
-        textChannel: message.channel,
-        member: message.member
-      });
-      message.react('🎶');
-    } catch (e) {
-      message.reply('حدث خطأ أثناء محاولة تشغيل الأغنية.');
-      console.error(e);
-    }
-  } else {
-    if (message.content.trim().length > 1) {
-      message.reply('انضم أولاً إلى قناة صوتية لأتمكن من تشغيل الأغنية!');
-    }
-  }
-});
+    song = await wavelink.YouTubeTrack.search(search, return_first=True)
+    await vc.play(song)
+    await ctx.send(f"🎵 يتم تشغيل: {song.title}")
 
-// رسائل من DisTube
-distube
-  .on('playSong', (queue, song) =>
-    queue.textChannel.send(`🎵 الآن يتم تشغيل: \`${song.name}\``)
-  )
-  .on('addSong', (queue, song) =>
-    queue.textChannel.send(`➕ تم إضافة: \`${song.name}\``)
-  )
-  .on('error', (channel, error) =>
-    channel.send('⚠️ حدث خطأ: ' + error.toString())
-  );
+@bot.command(name="stop", help="إيقاف الموسيقى")
+async def stop(ctx):
+    if ctx.voice_client:
+        await ctx.voice_client.disconnect()
+        await ctx.send("تم إيقاف الموسيقى وفصل البوت.")
 
-client.login(TOKEN);
+bot.run(TOKEN)
